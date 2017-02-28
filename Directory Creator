@@ -1,0 +1,15 @@
+rm(list = ls())
+
+setwd("~/Data/RDD Exiting Effects")
+
+#define trim function
+trim <- function (x) gsub("^\\s+|\\s+$", "", x)
+
+DISTRICT_NAMES <- trim(readLines("DISTRICT_LIST.txt"))
+
+
+for(DISTRICT in DISTRICT_NAMES){
+  
+  dir.create(DISTRICT)
+  
+}

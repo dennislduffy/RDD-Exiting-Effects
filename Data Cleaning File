@@ -1,0 +1,231 @@
+rm(list = ls())
+
+#load packages
+x = c("RODBC", "dplyr", "tidyr", "stringr")
+
+lapply(x, library, character.only = T)
+
+#connect to database
+db <- odbcDriverConnect("Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=//EDU-FileServer/HomeDirs/dduffy/My Documents/Data/RDD Exiting Effects/Database/Exit Effects.accdb")
+
+#set home directory
+
+homedir <- "//EDU-FileServer/HomeDirs/dduffy/My Documents/Data/RDD Exiting Effects"
+
+setwd(homedir)
+
+#define trim function
+trim <- function (x) gsub("^\\s+|\\s+$", "", x)
+
+#Define right extract function
+substrRight <- function(x, n){
+  
+  substr(x, nchar(x)-n+1, nchar(x))
+
+}
+
+#Read in column names
+setwd(paste(homedir, "/COLUMN NAMES", sep = ""))
+
+FILE_NAMES <- list.files(patter = "*.txt")
+
+for(FILE in FILE_NAMES){
+  
+  pos <- str_locate(FILE, "\\.")[1]
+  
+  NAME.USE <- substr(FILE, 1, pos-1)
+  
+  assign(NAME.USE, read.table(file = FILE, sep = "\t", quote = "\"", header = T))
+  
+  assign(paste("COLUMNS_", NAME.USE, sep = ""), colnames(get(NAME.USE)))
+  
+}
+
+#adjust file names to get the file that has been read into r
+
+files_access <- list()
+
+for(FILE in FILE_NAMES){
+  
+  pos <- str_locate(FILE, "\\.")[1]
+  
+  NAME.USE <- substr(FILE, 1, pos-1)
+  
+  files_access <- append(files_access, NAME.USE)
+  
+}
+
+#read in list of district names
+#DISTRICT_NAMES <- trim(readLines("DISTRICT_LIST.txt"))
+
+DISTRICT_NAMES <- c("EASTERN CARVER COUNTY PUBLIC SCHOOL")
+
+#, "EDEN PRAIRIE PUBLIC SCHOOL DISTRICT"
+#combine data files 
+
+for(DISTRICT in DISTRICT_NAMES){
+  
+  setwd(paste(homedir, DISTRICT, sep = "/"))
+  
+  FILE_NAMES <- list.files()
+  
+  for(FILE in FILE_NAMES){
+    
+    pos <- str_locate(FILE, "\\.")[1]
+    
+    NAME.USE <- substr(FILE, 1, pos-1)
+    
+    DATA.USE <- read.table(file = FILE, sep = "\t", quote = "\"", colClasses = c(V18 = "character"))
+    
+    COLUMNS_USE <- get(paste("COLUMNS_", NAME.USE, sep = ""))
+    
+    colnames(DATA.USE) <- COLUMNS_USE
+    
+    assign(NAME.USE, DATA.USE)
+    
+  }
+  
+  #create data frame of 2012 language codes
+  
+  LANGUAGES <- ACCESS_2012 %>%
+    select(MARSSSTATEREPORTINGNUMBER, LANGUAGECODE) %>%
+    distinct() %>%
+    group_by(MARSSSTATEREPORTINGNUMBER) %>%
+    filter(n() == 1)
+
+  for(FILE in files_access){
+    
+    DATA.USE <- get(FILE)
+    
+    #filter to only include valid scores
+    DATA.USE <- filter(DATA.USE, TESTCODE == "VS")
+    
+    #filter out blank MARSS numbers
+    DATA.USE <- filter(DATA.USE, MARSSSTATEREPORTINGNUMBER != "")
+    
+    #extract year
+    YEAR = unique(substr(DATA.USE$TESTDATE, 1, 4))
+    
+    #extract subject from file name
+    
+    pos <- str_locate(FILE, "_")
+    
+    FILE_SUBJECT <- substr(FILE, 1, pos-1)
+    
+    if(FILE_SUBJECT == "ACCESS"){
+    
+      SPARE_ACCESS <- DATA.USE 
+      
+      DATA.USE <- DATA.USE %>%
+        group_by(MARSSSTATEREPORTINGNUMBER) %>%
+        filter(n() == 5) %>%
+        mutate(SUBJECT = FILE_SUBJECT, 
+               SCORE1 = SCORE1/100,
+               YEAR = YEAR) %>%
+      select(MARSSSTATEREPORTINGNUMBER, SCORE1, TESTSUBJECT) %>%
+      spread(TESTSUBJECT, SCORE1) %>%
+      rename(ACCESS_COMPOSITE_SCALE = C, 
+             ACCESS_READING_SCALE = R, 
+             ACCESS_LISTENING_SCALE = L, 
+             ACCESS_SPEAKING_SCALE = S, 
+             ACCESS_WRITING_SCALE = W)
+      
+      SPARE_ACCESS <- SPARE_ACCESS %>%
+        group_by(MARSSSTATEREPORTINGNUMBER) %>%
+        filter(n() == 5) %>%
+        mutate(SCORE2 = SCORE2/100) %>%
+        select(MARSSSTATEREPORTINGNUMBER, SCORE2, TESTSUBJECT) %>%
+        spread(TESTSUBJECT, SCORE2) %>%
+        rename(COMPOSITE_LEVEL = C, 
+               READING_LEVEL = R, 
+               LISTENING_LEVEL = L, 
+               SPEAKING_LEVEL = S, 
+               WRITING_LEVEL = W)
+      
+      DATA.USE <- left_join(DATA.USE, SPARE_ACCESS, by = c("MARSSSTATEREPORTINGNUMBER"))
+      
+      colnames(DATA.USE)[2:11] <- paste(colnames(DATA.USE)[2:11], YEAR, sep = "_")
+      
+      assign(FILE, DATA.USE)
+    
+    }
+  
+    else if(FILE_SUBJECT == "READING"){
+      
+      DATA.USE <- DATA.USE %>%
+        mutate(SPED = ifelse(SPEFLAG == "Y", 1, 0), 
+               FRP = ifelse(FRPFLAG == "Y", 1, 0), 
+               LEP = ifelse(LEPFLAG == "Y", 1, 0), 
+               PROFICIENT = ifelse(ACHIEVEMENTLEVEL == "M" | ACHIEVEMENTLEVEL == "E", 1, 0), 
+               FEMALE = ifelse(GENDER == "F", 1, 0)) %>%
+        select(MARSSSTATEREPORTINGNUMBER, SCORE1, FRP, FEMALE, SPED, PROFICIENT, GRADE, LEP)
+      
+      DATA.USE$SCORE1 <- as.numeric(substrRight(DATA.USE$SCORE1, 4))/100
+      
+      colnames(DATA.USE)[grep("SCORE1", colnames(DATA.USE))] <- paste(FILE_SUBJECT, "_SCALE_", YEAR, sep = "")
+      colnames(DATA.USE)[grep("PROFICIENT", colnames(DATA.USE))] <- paste(FILE_SUBJECT, "_PROFICIENT_", YEAR, sep = "")
+      colnames(DATA.USE)[grep("LEP", colnames(DATA.USE))] <- paste("LEP_", YEAR, sep = "")
+      colnames(DATA.USE)[grep("SPED", colnames(DATA.USE))] <- paste("SPED_", YEAR, sep = "")
+      colnames(DATA.USE)[grep("GRADE", colnames(DATA.USE))] <- paste("GRADE_", YEAR, sep = "")
+      colnames(DATA.USE)[grep("FRP", colnames(DATA.USE))] <- paste("FRP_", YEAR, sep = "")
+      
+      assign(FILE, DATA.USE)
+      
+    }
+    
+    else{
+      
+      
+      DATA.USE <- DATA.USE %>%
+        mutate(PROFICIENT = ifelse(ACHIEVEMENTLEVEL == "M" | ACHIEVEMENTLEVEL == "E", 1, 0)) %>%
+        select(MARSSSTATEREPORTINGNUMBER, SCORE1, PROFICIENT)
+      
+      DATA.USE$SCORE1 <- as.numeric(substrRight(DATA.USE$SCORE1, 4))/100
+      
+      colnames(DATA.USE)[grep("SCORE1", colnames(DATA.USE))] <- paste(FILE_SUBJECT, "_SCALE_", YEAR, sep = "")
+      colnames(DATA.USE)[grep("PROFICIENT", colnames(DATA.USE))] <- paste(FILE_SUBJECT, "_PROFICIENT_", YEAR, sep = "")
+    
+      
+      assign(FILE, DATA.USE)
+      
+      
+    }
+    
+  }
+  
+  #remove unneeded demographic columns from the reading files for 2013 - 2016
+  files.edit <- c("READING_2013", "READING_2014", "READING_2015", "READING_2016")
+
+  for (FILE in files.edit){
+    
+    FILE_EDIT <- get(FILE) 
+    
+    FILE_EDIT <- FILE_EDIT %>%
+      select(-c("FEMALE"))
+    
+    assign(FILE, FILE_EDIT)
+    
+  }
+    
+  COMBINED_DATA <- ACCESS_2012 %>%
+    left_join(ACCESS_2013, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(ACCESS_2014, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(ACCESS_2015, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(ACCESS_2016, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(READING_2012, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(READING_2013, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(READING_2014, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(READING_2015, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(READING_2016, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(MATH_2012, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(MATH_2013, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(MATH_2014, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(MATH_2015, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(MATH_2016, by = "MARSSSTATEREPORTINGNUMBER") %>%
+    left_join(LANGUAGES, by = "MARSSSTATEREPORTINGNUMBER")
+    
+    
+}
+
+
+odbcClose(db)

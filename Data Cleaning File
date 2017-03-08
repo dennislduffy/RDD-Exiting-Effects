@@ -308,22 +308,72 @@ for(YEAR in YEARS){
   
 }
 
-#odbcClose(db)
+#reset working directory
+setwd(homedir)
+
+#clean up the workspace
+objects.keep <- c("homedir", "DISTRICT_NAMES", "trim", "substrRight", "COLUMNS_ACCESS_2012")
+
+objects.remove <- !(ls() %in% objects.keep)
+objects.remove <- ls()[objects.remove]
+
+rm(list = objects.remove)
+
+#create language lists
+
+#create empty data frame for 2012 language codes from each district
+MARSSSTATEREPORTINGNUMBER <- character()
+LANGUAGECODE <- character()
+
+LANGUAGE_CODES <- data.frame(MARSSSTATEREPORTINGNUMBER, LANGUAGECODE)
+
+for(DISTRICT in DISTRICT_NAMES){
+  
+  setwd(paste(homedir, DISTRICT, sep = "/"))
+  
+  ACCESS <- read.table(file = "ACCESS_2012.tab", sep = "\t", quote = "\"", colClasses = c(V18 = "character"))
+  
+  colnames(ACCESS) <- COLUMNS_ACCESS_2012
+  
+  ACCESS <- select(ACCESS, MARSSSTATEREPORTINGNUMBER, LANGUAGECODE) 
+  
+  LANGUAGE_CODES <- rbind(LANGUAGE_CODES, ACCESS)
+  
+}
+
+LANGUAGE_CODES <- unique(LANGUAGE_CODES)
+
+#remove any duplicate students
+
+LANGUAGE_CODES <- LANGUAGE_CODES %>%
+  group_by(MARSSSTATEREPORTINGNUMBER) %>%
+  filter(n() == 1)
+
+sqlSave(db, LANGUAGE_CODES, tablename = "LANGUAGE_CODES", append = F, rownames = F)
+
+#Create separate tables for ACCESS data in the database
+
+FILE_LIST <- c("COMBINED_2012", "COMBINED_2013", "COMBINED_2014", "COMBINED_2015", "COMBINED_2016")
+
+for(FILE in FILE_LIST){
+  
+  DATA.USE <- sqlQuery(db, paste("SELECT * FROM ", FILE), as.is = T)
+  
+  DATA.USE <- DATA.USE %>%
+    filter(LEP == "1") %>%
+    select(MARSSSTATEREPORTINGNUMBER, ACCESS_COMPOSITE_SCALE, ACCESS_LISTENING_SCALE, ACCESS_READING_SCALE, ACCESS_WRITING_SCALE, 
+           ACCESS_SPEAKING_SCALE, COMPOSITE_LEVEL, LISTENING_LEVEL, READING_LEVEL, SPEAKING_LEVEL, WRITING_LEVEL, ACCESS_PROFICIENT)
+  
+  pos <- str_locate(FILE, "_")[1]
+  
+  YEAR <- substr(FILE, pos + 1, str_length(FILE))
+  
+  
+  sqlSave(db, DATA.USE, tablename = paste("ACCESS_", YEAR, sep = ""), append = F, rownames = F)
+  
+}
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+odbcClose(db)

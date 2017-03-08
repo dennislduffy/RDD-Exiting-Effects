@@ -24,10 +24,17 @@ substrRight <- function(x, n){
 
 }
 
+#read in list of district names
+DISTRICT_NAMES <- trim(readLines("DISTRICT_LIST.txt"))
+
+
 #Read in column names
 setwd(paste(homedir, "/COLUMN NAMES", sep = ""))
 
-FILE_NAMES <- list.files(patter = "*.txt")
+FILE_NAMES <- list.files(pattern = ".txt")
+
+#create blank file list
+FILE_LIST <- character()
 
 for(FILE in FILE_NAMES){
   
@@ -35,197 +42,288 @@ for(FILE in FILE_NAMES){
   
   NAME.USE <- substr(FILE, 1, pos-1)
   
-  assign(NAME.USE, read.table(file = FILE, sep = "\t", quote = "\"", header = T))
+  FILE_LIST <- append(FILE_LIST, NAME.USE)
   
+  assign(NAME.USE, read.table(file = FILE, sep = "\t", quote = "\"", header = T))
+
   assign(paste("COLUMNS_", NAME.USE, sep = ""), colnames(get(NAME.USE)))
   
 }
 
-#adjust file names to get the file that has been read into r
+rm(list = FILE_LIST)
 
-files_access <- list()
 
-for(FILE in FILE_NAMES){
-  
-  pos <- str_locate(FILE, "\\.")[1]
-  
-  NAME.USE <- substr(FILE, 1, pos-1)
-  
-  files_access <- append(files_access, NAME.USE)
-  
-}
+#create list of years
 
-#read in list of district names
-#DISTRICT_NAMES <- trim(readLines("DISTRICT_LIST.txt"))
+YEARS <- c("2012", "2013", "2014", "2015", "2016")
 
-DISTRICT_NAMES <- c("EASTERN CARVER COUNTY PUBLIC SCHOOL")
 
-#, "EDEN PRAIRIE PUBLIC SCHOOL DISTRICT"
+#create empty data frame for 2012 language codes from each district
+# MARSSSTATEREPORTINGNUMBER <- character()
+# LANGUAGECODE <- character()
+# 
+# LANGUAGE_CODES <- data.frame(MARSSSTATEREPORTINGNUMBER, LANGUAGECODE)
+
+
 #combine data files 
 
-for(DISTRICT in DISTRICT_NAMES){
-  
-  setwd(paste(homedir, DISTRICT, sep = "/"))
-  
-  FILE_NAMES <- list.files()
-  
-  for(FILE in FILE_NAMES){
-    
-    pos <- str_locate(FILE, "\\.")[1]
-    
-    NAME.USE <- substr(FILE, 1, pos-1)
-    
-    DATA.USE <- read.table(file = FILE, sep = "\t", quote = "\"", colClasses = c(V18 = "character"))
-    
-    COLUMNS_USE <- get(paste("COLUMNS_", NAME.USE, sep = ""))
-    
-    colnames(DATA.USE) <- COLUMNS_USE
-    
-    assign(NAME.USE, DATA.USE)
-    
-  }
-  
-  #create data frame of 2012 language codes
-  
-  LANGUAGES <- ACCESS_2012 %>%
-    select(MARSSSTATEREPORTINGNUMBER, LANGUAGECODE) %>%
-    distinct() %>%
-    group_by(MARSSSTATEREPORTINGNUMBER) %>%
-    filter(n() == 1)
 
-  for(FILE in files_access){
+for(YEAR in YEARS){
+  
+  count = 1
+
+  
+  for(DISTRICT in DISTRICT_NAMES){
     
-    DATA.USE <- get(FILE)
+    #adjust file names to get the file that has been read into r
     
-    #filter to only include valid scores
-    DATA.USE <- filter(DATA.USE, TESTCODE == "VS")
+#     files_access <- list()
+#     
+#     for(FILE in FILE_NAMES){
+#       
+#       if(str_detect(FILE, YEAR) == T){
+#         
+#         pos <- str_locate(FILE, "\\.")[1]
+#         
+#         NAME.USE <- substr(FILE, 1, pos-1)
+#         
+#         files_access <- append(files_access, NAME.USE)
+#         
+#       }
+#       
+#     }
     
-    #filter out blank MARSS numbers
-    DATA.USE <- filter(DATA.USE, MARSSSTATEREPORTINGNUMBER != "")
+    setwd(paste(homedir, DISTRICT, sep = "/"))
     
-    #extract year
-    YEAR = unique(substr(DATA.USE$TESTDATE, 1, 4))
+    #Grab 2012 language codes
     
-    #extract subject from file name
+#     if(YEAR == 2012){
+#       
+#       ACCESS <- read.table(file = "ACCESS_2012.tab", sep = "\t", quote = "\"", colClasses = c(V18 = "character", V10 = "character"))
+#       
+#       colnames(ACCESS) <- COLUMNS_ACCESS_2012
+#       
+#       DISTRICT_LANGUAGE_CODES <- select(ACCESS, MARSSSTATEREPORTINGNUMBER, LANGUAGECODE)
+#       
+#       LANGUAGE_CODES <- rbind(LANGUAGE_CODES, DISTRICT_LANGUAGE_CODES)
+#       
+#     }
     
-    pos <- str_locate(FILE, "_")
+    FILE_NAMES <- list.files(pattern = paste("*", YEAR, sep = ""))
     
-    FILE_SUBJECT <- substr(FILE, 1, pos-1)
+    files_access <- list()
     
-    if(FILE_SUBJECT == "ACCESS"){
-    
-      SPARE_ACCESS <- DATA.USE 
+    for(FILE in FILE_NAMES){
       
-      DATA.USE <- DATA.USE %>%
-        group_by(MARSSSTATEREPORTINGNUMBER) %>%
-        filter(n() == 5) %>%
-        mutate(SUBJECT = FILE_SUBJECT, 
-               SCORE1 = SCORE1/100,
-               YEAR = YEAR) %>%
-      select(MARSSSTATEREPORTINGNUMBER, SCORE1, TESTSUBJECT) %>%
-      spread(TESTSUBJECT, SCORE1) %>%
-      rename(ACCESS_COMPOSITE_SCALE = C, 
-             ACCESS_READING_SCALE = R, 
-             ACCESS_LISTENING_SCALE = L, 
-             ACCESS_SPEAKING_SCALE = S, 
-             ACCESS_WRITING_SCALE = W)
+      pos <- str_locate(FILE, "\\.")[1]
       
-      SPARE_ACCESS <- SPARE_ACCESS %>%
-        group_by(MARSSSTATEREPORTINGNUMBER) %>%
-        filter(n() == 5) %>%
-        mutate(SCORE2 = SCORE2/100) %>%
-        select(MARSSSTATEREPORTINGNUMBER, SCORE2, TESTSUBJECT) %>%
-        spread(TESTSUBJECT, SCORE2) %>%
-        rename(COMPOSITE_LEVEL = C, 
-               READING_LEVEL = R, 
-               LISTENING_LEVEL = L, 
-               SPEAKING_LEVEL = S, 
-               WRITING_LEVEL = W)
+      NAME.USE <- substr(FILE, 1, pos-1)
       
-      DATA.USE <- left_join(DATA.USE, SPARE_ACCESS, by = c("MARSSSTATEREPORTINGNUMBER"))
+      files_access <- append(files_access, NAME.USE)
       
-      colnames(DATA.USE)[2:11] <- paste(colnames(DATA.USE)[2:11], YEAR, sep = "_")
+      DATA.USE <- read.table(file = FILE, sep = "\t", quote = "\"", colClasses = c(V18 = "character", V10 = "character"))
       
-      assign(FILE, DATA.USE)
+      COLUMNS_USE <- get(paste("COLUMNS_", NAME.USE, sep = ""))
+      
+      colnames(DATA.USE) <- COLUMNS_USE
+      
+      
+      if(str_detect(FILE, "READING") == T & YEAR == "2012"){
+        
+        DATA.USE <- filter(DATA.USE, TESTNAME == "MCA-II")
+        
+      }
+      
+      if(str_detect(FILE, "READING") == T & YEAR == "2013" | 
+         str_detect(FILE, "READING") == T & YEAR == "2014" | 
+         str_detect(FILE, "READING") == T & YEAR == "2015" | 
+         str_detect(FILE, "READING") == T & YEAR == "2016"){
+        
+        DATA.USE <- filter(DATA.USE, TESTNAME == "MCA-III")
+        
+      }
+      
+      if(str_detect(FILE, "MATH") == T){
+        
+        DATA.USE <- filter(DATA.USE, TESTNAME == "MCA-III")
+        
+      }
+      
+      assign(NAME.USE, DATA.USE)
     
     }
-  
-    else if(FILE_SUBJECT == "READING"){
+
+    for(FILE in files_access){
       
-      DATA.USE <- DATA.USE %>%
-        mutate(SPED = ifelse(SPEFLAG == "Y", 1, 0), 
-               FRP = ifelse(FRPFLAG == "Y", 1, 0), 
-               LEP = ifelse(LEPFLAG == "Y", 1, 0), 
-               PROFICIENT = ifelse(ACHIEVEMENTLEVEL == "M" | ACHIEVEMENTLEVEL == "E", 1, 0), 
-               FEMALE = ifelse(GENDER == "F", 1, 0)) %>%
-        select(MARSSSTATEREPORTINGNUMBER, SCORE1, FRP, FEMALE, SPED, PROFICIENT, GRADE, LEP)
+      DATA.USE <- get(FILE)
       
-      DATA.USE$SCORE1 <- as.numeric(substrRight(DATA.USE$SCORE1, 4))/100
+      #filter to only include valid scores
+      DATA.USE <- filter(DATA.USE, TESTCODE == "VS")
       
-      colnames(DATA.USE)[grep("SCORE1", colnames(DATA.USE))] <- paste(FILE_SUBJECT, "_SCALE_", YEAR, sep = "")
-      colnames(DATA.USE)[grep("PROFICIENT", colnames(DATA.USE))] <- paste(FILE_SUBJECT, "_PROFICIENT_", YEAR, sep = "")
-      colnames(DATA.USE)[grep("LEP", colnames(DATA.USE))] <- paste("LEP_", YEAR, sep = "")
-      colnames(DATA.USE)[grep("SPED", colnames(DATA.USE))] <- paste("SPED_", YEAR, sep = "")
-      colnames(DATA.USE)[grep("GRADE", colnames(DATA.USE))] <- paste("GRADE_", YEAR, sep = "")
-      colnames(DATA.USE)[grep("FRP", colnames(DATA.USE))] <- paste("FRP_", YEAR, sep = "")
+      #filter out blank MARSS numbers
+      DATA.USE <- filter(DATA.USE, MARSSSTATEREPORTINGNUMBER != "")
       
-      assign(FILE, DATA.USE)
+      #extract subject from file name
+      
+      pos <- str_locate(FILE, "_")
+      
+      FILE_SUBJECT <- substr(FILE, 1, pos-1)
+      
+      if(FILE_SUBJECT == "ACCESS"){
+        
+        SPARE_ACCESS <- DATA.USE 
+        
+        DATA.USE <- DATA.USE %>%
+          group_by(MARSSSTATEREPORTINGNUMBER) %>%
+          filter(n() == 5) %>%
+          mutate(SUBJECT = FILE_SUBJECT, 
+                 SCORE1 = SCORE1/100,
+                 YEAR = YEAR, 
+                 SPED = ifelse(SPEFLAG == "Y", 1, 0), 
+                 FRP = ifelse(FRPFLAG == "Y", 1, 0), 
+                 LEP = ifelse(LEPFLAG == "Y", 1, 0), 
+                 FEMALE = ifelse(GENDER == "F", 1, 0)) %>%
+          select(MARSSSTATEREPORTINGNUMBER, SCORE1, TESTSUBJECT, SPED, FRP, LEP, FEMALE) %>%
+          spread(TESTSUBJECT, SCORE1) %>%
+          rename(ACCESS_COMPOSITE_SCALE = C, 
+                 ACCESS_READING_SCALE = R, 
+                 ACCESS_LISTENING_SCALE = L, 
+                 ACCESS_SPEAKING_SCALE = S, 
+                 ACCESS_WRITING_SCALE = W)
+        
+        SPARE_ACCESS <- SPARE_ACCESS %>%
+          group_by(MARSSSTATEREPORTINGNUMBER) %>%
+          filter(n() == 5) %>%
+          mutate(SCORE2 = SCORE2/100) %>%
+          select(MARSSSTATEREPORTINGNUMBER, SCORE2, TESTSUBJECT, GRADE) %>%
+          spread(TESTSUBJECT, SCORE2) %>%
+          rename(COMPOSITE_LEVEL = C, 
+                 READING_LEVEL = R, 
+                 LISTENING_LEVEL = L, 
+                 SPEAKING_LEVEL = S, 
+                 WRITING_LEVEL = W) %>%
+          mutate(ACCESS_PROFICIENT = ifelse(COMPOSITE_LEVEL >= 5 & LISTENING_LEVEL >= 4 &
+                                              READING_LEVEL >= 4 & SPEAKING_LEVEL >= 4 &
+                                              WRITING_LEVEL >= 4, 1, 0))
+        
+        DATA.USE <- left_join(DATA.USE, SPARE_ACCESS, by = c("MARSSSTATEREPORTINGNUMBER"))
+        
+#         colnames(DATA.USE)[2:12] <- paste(colnames(DATA.USE)[2:12], YEAR, sep = "_")
+        
+        assign(FILE, DATA.USE)
+        
+      }
+      
+      else if(FILE_SUBJECT == "READING"){
+        
+        DATA.USE <- DATA.USE %>%
+          mutate(SPED = ifelse(SPEFLAG == "Y", 1, 0), 
+                 FRP = ifelse(FRPFLAG == "Y", 1, 0), 
+                 LEP = ifelse(LEPFLAG == "Y", 1, 0), 
+                 READING_PROFICIENT = ifelse(ACHIEVEMENTLEVEL == "M" | ACHIEVEMENTLEVEL == "E", 1, 0), 
+                 FEMALE = ifelse(GENDER == "F", 1, 0)) %>%
+          select(MARSSSTATEREPORTINGNUMBER, SCORE1, FRP, FEMALE, SPED, READING_PROFICIENT, GRADE, LEP) %>%
+          rename(READING_SCALE = SCORE1)
+        
+        DATA.USE$READING_SCALE <- as.numeric(substrRight(DATA.USE$READING_SCALE, 4))/100
+        
+#         colnames(DATA.USE)[grep("SCORE1", colnames(DATA.USE))] <- paste(FILE_SUBJECT, "_SCALE_", YEAR, sep = "")
+#         colnames(DATA.USE)[grep("PROFICIENT", colnames(DATA.USE))] <- paste(FILE_SUBJECT, "_PROFICIENT_", YEAR, sep = "")
+#         colnames(DATA.USE)[grep("LEP", colnames(DATA.USE))] <- paste("LEP_", YEAR, sep = "")
+#         colnames(DATA.USE)[grep("SPED", colnames(DATA.USE))] <- paste("SPED_", YEAR, sep = "")
+#         colnames(DATA.USE)[grep("GRADE", colnames(DATA.USE))] <- paste("GRADE_", YEAR, sep = "")
+#         colnames(DATA.USE)[grep("FRP", colnames(DATA.USE))] <- paste("FRP_", YEAR, sep = "")
+#         
+        assign(FILE, DATA.USE)
+        
+      }
+      
+      else{
+        
+        
+        DATA.USE <- DATA.USE %>%
+          mutate(MATH_PROFICIENT = ifelse(ACHIEVEMENTLEVEL == "M" | ACHIEVEMENTLEVEL == "E", 1, 0), 
+                 SPED = ifelse(SPEFLAG == "Y", 1, 0), 
+                 FRP = ifelse(FRPFLAG == "Y", 1, 0), 
+                 LEP = ifelse(LEPFLAG == "Y", 1, 0), 
+                 FEMALE = ifelse(GENDER == "F", 1, 0)) %>%
+          select(MARSSSTATEREPORTINGNUMBER, SCORE1, MATH_PROFICIENT, GRADE, SPED, FRP, LEP, FEMALE) %>%
+          rename(MATH_SCALE = SCORE1)
+        
+        DATA.USE$MATH_SCALE <- as.numeric(substrRight(DATA.USE$MATH_SCALE, 4))/100
+        
+#         colnames(DATA.USE)[grep("SCORE1", colnames(DATA.USE))] <- paste(FILE_SUBJECT, "_SCALE_", YEAR, sep = "")
+#         colnames(DATA.USE)[grep("PROFICIENT", colnames(DATA.USE))] <- paste(FILE_SUBJECT, "_PROFICIENT_", YEAR, sep = "")
+#         
+        
+        assign(FILE, DATA.USE)
+        
+        
+      }
+      
+    }
+   
+    if(count == 1){
+      
+      ACCESS_COMBINE <- get(paste("ACCESS_", YEAR, sep = ""))
+      READING_COMBINE <- get(paste("READING_", YEAR, sep = ""))
+      MATH_COMBINE <- get(paste("MATH_", YEAR, sep = ""))
+      
+      COMBINED_DATA <- ACCESS_COMBINE %>%
+        full_join(READING_COMBINE, by = c("MARSSSTATEREPORTINGNUMBER", "GRADE", "FEMALE", "SPED", "FRP", "LEP")) %>%
+        full_join(MATH_COMBINE, by = c("MARSSSTATEREPORTINGNUMBER", "GRADE", "FEMALE", "SPED", "FRP", "LEP")) %>%
+        #left_join(LANGUAGE_CODES, by = "MARSSSTATEREPORTINGNUMBER") %>%
+        mutate(YEAR = YEAR,
+               DISTRICT = DISTRICT) %>%
+        group_by(MARSSSTATEREPORTINGNUMBER) %>%
+        filter(n() == 1)
       
     }
     
     else{
       
+      ACCESS_COMBINE <- get(paste("ACCESS_", YEAR, sep = ""))
+      READING_COMBINE <- get(paste("READING_", YEAR, sep = ""))
+      MATH_COMBINE <- get(paste("MATH_", YEAR, sep = ""))
       
-      DATA.USE <- DATA.USE %>%
-        mutate(PROFICIENT = ifelse(ACHIEVEMENTLEVEL == "M" | ACHIEVEMENTLEVEL == "E", 1, 0)) %>%
-        select(MARSSSTATEREPORTINGNUMBER, SCORE1, PROFICIENT)
+      DATA_BIND <- ACCESS_COMBINE %>%
+        full_join(READING_COMBINE, by = c("MARSSSTATEREPORTINGNUMBER", "GRADE", "FEMALE", "SPED", "FRP", "LEP")) %>%
+        full_join(MATH_COMBINE, by = c("MARSSSTATEREPORTINGNUMBER", "GRADE", "FEMALE", "SPED", "FRP", "LEP")) %>%
+        #left_join(LANGUAGE_CODES, by = "MARSSSTATEREPORTINGNUMBER") %>%
+        mutate(YEAR = YEAR, 
+               DISTRICT = DISTRICT) %>%
+        group_by(MARSSSTATEREPORTINGNUMBER) %>%
+        filter(n() == 1)
       
-      DATA.USE$SCORE1 <- as.numeric(substrRight(DATA.USE$SCORE1, 4))/100
-      
-      colnames(DATA.USE)[grep("SCORE1", colnames(DATA.USE))] <- paste(FILE_SUBJECT, "_SCALE_", YEAR, sep = "")
-      colnames(DATA.USE)[grep("PROFICIENT", colnames(DATA.USE))] <- paste(FILE_SUBJECT, "_PROFICIENT_", YEAR, sep = "")
-    
-      
-      assign(FILE, DATA.USE)
-      
+      COMBINED_DATA <- rbind(COMBINED_DATA, DATA_BIND)
       
     }
     
+    count = count + 1
+     
   }
   
-  #remove unneeded demographic columns from the reading files for 2013 - 2016
-  files.edit <- c("READING_2013", "READING_2014", "READING_2015", "READING_2016")
-
-  for (FILE in files.edit){
-    
-    FILE_EDIT <- get(FILE) 
-    
-    FILE_EDIT <- FILE_EDIT %>%
-      select(-c("FEMALE"))
-    
-    assign(FILE, FILE_EDIT)
-    
-  }
-    
-  COMBINED_DATA <- ACCESS_2012 %>%
-    left_join(ACCESS_2013, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(ACCESS_2014, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(ACCESS_2015, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(ACCESS_2016, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(READING_2012, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(READING_2013, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(READING_2014, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(READING_2015, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(READING_2016, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(MATH_2012, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(MATH_2013, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(MATH_2014, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(MATH_2015, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(MATH_2016, by = "MARSSSTATEREPORTINGNUMBER") %>%
-    left_join(LANGUAGES, by = "MARSSSTATEREPORTINGNUMBER")
-    
-    
+  sqlSave(db, COMBINED_DATA, tablename = paste("COMBINED_", YEAR, sep = ""), append = F, rownames = F)
+  
+  
 }
 
+#odbcClose(db)
 
-odbcClose(db)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
